@@ -20,7 +20,7 @@ def create_app():
     def home():
         return jsonify({
             "success": True,
-            "message": "Welcome to the HAC API. Visit https://homeaccesscenterapi-docs.vercel.app/"
+            "message": "Welcome to the HAC API."
         })
 
     return app
