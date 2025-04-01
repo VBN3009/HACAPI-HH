@@ -10,7 +10,7 @@ def get_report():
     link = request.args.get('link', 'https://accesscenter.roundrockisd.org/')
 
     session = HACSession(user, password, link)
-    data = session.getReport()
+    data = session.get_report()
     return jsonify(data)
 
 @report_bp.route("/api/getIpr", methods=["GET"])
