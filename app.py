@@ -4,8 +4,16 @@ from routes import register_routes
 from dotenv import load_dotenv
 from hac.session import HACSession
 import os
+from supabase import create_client
+
+
 
 load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
 
 def create_app():
     app = Flask(__name__)
@@ -32,3 +40,11 @@ if __name__ == "__main__":
     password = os.getenv("HAC_PASSWORD")
     base_url = os.getenv("HAC_URL")
     session = HACSession(username, password, base_url)
+    report = session.get_report()
+
+    if report:
+        print("Headers:", report["headers"])
+        for row in report["data"]:
+            print(row)
+    else:
+        print("No report data found.")
