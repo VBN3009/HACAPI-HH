@@ -27,7 +27,7 @@ def log_checkin():
     res = supabase.table("checkouts") \
         .update({
             "checkin_time": payload["checkin_time"],
-            "duration_sec": payload["duration_sec"]
+            "duration_s": payload["duration_sec"]
         }) \
         .eq("id", payload["checkout_id"]) \
         .execute()
