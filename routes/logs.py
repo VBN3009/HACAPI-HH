@@ -8,18 +8,30 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 @logs_bp.route("/checkout", methods=["POST"])
 def log_checkout():
     payload = request.get_json()
-    record = {
-        "student_name":  payload["student_name"],
-        "class_name":    payload["class_name"],
-        "period":        payload["period"],
-        "room":          payload["room"],
-        "teacher":       payload["teacher"],
-        "checkout_time": payload.get("checkout_time")
-    }
-    res = supabase.table("checkouts").insert(record).execute()
-    if res.error:
-        return jsonify({"error": res.error.message}), 500
-    return jsonify(res.data[0]), 201
+    print("📥 Incoming checkout payload:", payload)  # ← Add this line!
+
+    try:
+        record = {
+            "student_name":  payload["student_name"],
+            "class_name":    payload["class_name"],
+            "period":        int(payload["period"]),
+            "room":          payload["room"],
+            "teacher":       payload["teacher"],
+            "checkout_time": payload.get("checkout_time")
+        }
+
+        res = supabase.table("checkouts").insert(record).execute()
+
+        if res.error:
+            print("❌ Supabase insert error:", res.error.message)
+            return jsonify({"error": res.error.message}), 500
+
+        return jsonify(res.data[0]), 201
+    
+    except Exception as e:
+        print("🔥 Exception occurred in /logs/checkout:", str(e))
+        return jsonify({"error": str(e)}), 500
+
 
 @logs_bp.route("/checkin", methods=["POST"])
 def log_checkin():
