@@ -6,3 +6,4 @@ lxml
 python-dotenv
 urllib3
 gunicorn
+supabase
