@@ -403,13 +403,15 @@ class HACSession:
         url = self.base_url + "HomeAccess/Frame/StudentPicker"
         logger.info(f"📤 Switching to student ID: {student_id}")
 
-        # Step 1: Load the form to get the CSRF token
+        # Step 1: Fetch the student picker form to get CSRF token
         response = self.session.get(url)
         if response.status_code != 200:
             logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
             return False
 
         soup = BeautifulSoup(response.text, "lxml")
+        logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
+
         token_input = soup.find("input", {"name": "__RequestVerificationToken"})
         token = token_input["value"] if token_input else None
 
@@ -417,26 +419,25 @@ class HACSession:
             logger.warning("❌ CSRF token not found on StudentPicker form.")
             return False
 
-        # Step 2: Prepare payload and headers
+        # Step 2: Submit the POST form to switch students
         payload = {
             "__RequestVerificationToken": token,
             "studentId": student_id,
-            "url": ""  # Same as the form
+            "url": ""
         }
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Referer": url,  # 🧠 Some servers require referer to validate CSRF
-            "User-Agent": "Mozilla/5.0",  # 🧠 Makes it more browser-like
+            "Referer": url,
+            "Origin": self.base_url.rstrip("/"),
+            "User-Agent": "Mozilla/5.0"
         }
 
-        logger.debug(f"📤 Payload: {payload}")
-        logger.debug(f"📤 Headers: {headers}")
-
-        # Step 3: Submit the POST request to switch students
+        logger.debug(f"📤 Switching student with payload: {payload}")
         post_response = self.session.post(url, data=payload, headers=headers)
-        logger.debug(f"🔁 POST Response status: {post_response.status_code}")
-        logger.debug(f"🔁 POST Response body: {post_response.text[:500]}")
+
+        logger.debug(f"🔁 Response status: {post_response.status_code}")
+        logger.debug(f"🔁 Response body (first 1000 chars):\n{post_response.text[:1000]}")
 
         if post_response.status_code == 200:
             logger.info("✅ Student switched successfully")
