@@ -1,20 +1,18 @@
+# routes/lookup_routes.py
 from flask import Blueprint, request, jsonify
+from hac.session import HACSession
+import os
 
-lookup_bp = Blueprint('lookup', __name__)
+lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
-# This would hit your database or a cache with current session data
-@lookup_bp.route("/lookup", methods=["GET"])
-def student_lookup():
-    name = request.args.get("name", "").strip().lower()
+@lookup_bp.route("/students", methods=["POST"])
+def get_student_list():
+    payload = request.get_json()
+    username = payload.get("username")
+    password = payload.get("password")
+    base_url = os.getenv("HAC_URL")  # or default to "https://accesscenter.roundrockisd.org/"
 
-    # Placeholder: your database would contain this info
-    mock_data = {
-        "john doe": {"class": "Physics", "room": "B101", "status": "In Class"},
-        "jane smith": {"class": "Biology", "room": "C202", "status": "In Hall"},
-    }
+    session = HACSession(username, password, base_url)
+    students = session.get_students()
 
-    student_info = mock_data.get(name)
-    if not student_info:
-        return jsonify({"error": "Student not found"}), 404
-
-    return jsonify({"student": name.title(), "info": student_info})
+    return jsonify(students)

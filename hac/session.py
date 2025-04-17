@@ -367,3 +367,32 @@ class HACSession:
         else:
             logger.warning("Rank field not found in transcript page.")
             return None
+        
+    def get_students(self):
+        if not self.logged_in:
+            self.login()
+
+        url = self.base_url + "HomeAccess/Frame/StudentPicker"
+        response = safe_get(self.session, url)
+        if not response:
+            logger.warning("Failed to fetch StudentPicker.")
+            return None
+
+        soup = BeautifulSoup(response.text, "lxml")
+        form = soup.find("form", id="StudentPicker")
+        if not form:
+            logger.warning("StudentPicker form not found.")
+            return None
+
+        students = []
+        for label in form.find_all("label", class_="sg-student-picker-row"):
+            input_tag = label.find("input", {"name": "studentId"})
+            if not input_tag:
+                continue
+            student_id = input_tag.get("value")
+            name_span = label.find("span", class_="sg-picker-student-name")
+            name = name_span.text.strip() if name_span else "Unknown"
+            students.append({"id": student_id, "name": name})
+
+        return students
+
