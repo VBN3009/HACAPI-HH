@@ -486,18 +486,36 @@ class HACSession:
         logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
         return False
     
-    def get_current_student(self):
+    def get_active_student(self):
+        """
+        Returns the currently selected student name (and ID, if you like)
+        by scraping the banner chooser on the Home page.
+        """
         if not self.logged_in:
             self.login()
 
-        url = self.base_url + "HomeAccess/Home"
-        response = self.session.get(url)
-        if response.status_code != 200:
-            logger.warning("❌ Failed to load Home page for current student.")
+        home_url = self.base_url + "HomeAccess/Home"
+        logger.info(f"🌐 [SESSION] GET {home_url} to fetch active student")
+        resp = self.session.get(home_url)
+        logger.debug(f"🔁 [SESSION] Home page status: {resp.status_code}")
+        if resp.status_code != 200:
+            logger.warning(f"❌ [SESSION] could not fetch Home page: {resp.status_code}")
             return None
 
-        soup = BeautifulSoup(response.text, "lxml")
-        name_span = soup.find("span", class_="sg-banner-text sg-banner-text-color sg-add-change-student")
-        if name_span:
-            return name_span.text.strip()
-        return None
+        soup = BeautifulSoup(resp.text, "lxml")
+        chooser = soup.find("div", class_="sg-banner-chooser")
+        if not chooser:
+            logger.warning("❌ [SESSION] banner chooser not found")
+            return None
+
+        span = chooser.find(
+            "span",
+            class_="sg-banner-text sg-banner-text-color sg-add-change-student"
+        )
+        if not span:
+            logger.warning("❌ [SESSION] active‑student span not found")
+            return None
+
+        name = span.text.strip()
+        logger.info(f"✅ [SESSION] active student: {name}")
+        return {"name": name}

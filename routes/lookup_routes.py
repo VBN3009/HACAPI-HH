@@ -2,6 +2,10 @@
 from flask import Blueprint, request, jsonify
 from hac.session import HACSession
 import os
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
 
 lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
@@ -90,17 +94,33 @@ def switch_student():
 def get_current_student():
     try:
         payload = request.get_json(force=True)
+        print("🔍 [current] Raw payload:", payload)
+
         username = payload.get("username")
         password = payload.get("password")
-        base_url = os.getenv("HAC_URL")
+        raw_base = payload.get("base_url", os.getenv("HAC_URL", ""))
+
+        print(f"🔑 [current] username={username!r}  password={'*'*len(password) if password else None}")
+        print(f"🌐 [current] raw_base_url={raw_base!r}")
+
+        base_url = raw_base.rstrip("/") + "/"
+        print(f"🛠️ [current] normalized base_url={base_url!r}")
+
+        if not base_url.startswith("https://accesscenter.roundrockisd.org/"):
+            return jsonify({"error": f"❌ Invalid HAC base URL: {base_url}"}), 400
 
         session = HACSession(username, password, base_url)
-        student_name = session.get_current_student()
 
-        if not student_name:
-            return jsonify({"error": "Could not determine current student"}), 404
+        print("📥 [current] fetching active student…")
+        active = session.get_active_student()
+        print("📥 [current] got active:", active)
 
-        return jsonify({"student": student_name}), 200
+        if not active:
+            return jsonify({"success": False, "error": "No active student found"}), 404
+
+        return jsonify({"success": True, "active": active}), 200
 
     except Exception as e:
+        print("❌ [current] Exception:", e)
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
