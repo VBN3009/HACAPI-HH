@@ -402,7 +402,7 @@ class HACSession:
 
         url = self.base_url + "HomeAccess/Frame/StudentPicker"
 
-        # Step 1: Load the student picker form to get the CSRF token
+        # Fetch the form page
         response = self.session.get(url)
         if response.status_code != 200:
             logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
@@ -416,34 +416,32 @@ class HACSession:
             logger.warning("❌ CSRF token not found on StudentPicker form.")
             return False
 
-        # Step 2: Prepare the payload
         payload = {
             "__RequestVerificationToken": token,
             "studentId": student_id,
-            "url": ""
+            "url": ""  # Required hidden field in the form
         }
 
-        # Step 3: Prepare headers to mimic a browser
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": self.base_url.rstrip('/'),
-            "Referer": self.base_url + "HomeAccess/Frame/StudentPicker",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
+            "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        # Step 4: POST to switch student
-        logger.debug(f"📤 Switching student with payload: {payload}")
+        logger.info(f"📤 Switching to student ID: {student_id}")
+        logger.debug(f"📤 POST payload: {payload}")
+        
         post_response = self.session.post(url, data=payload, headers=headers)
-
+        
         logger.debug(f"🔁 Response status: {post_response.status_code}")
-        logger.debug(f"🔁 Response body:\n{post_response.text[:500]}")
+        logger.debug(f"🔁 Response body snippet:\n{post_response.text[:500]}")
 
+        # Check if student switch appears successful based on content
         if post_response.status_code == 200:
-            logger.info("✅ Student switched successfully")
-            return True
+            if "sg-banner-chooser" in post_response.text or "Change Student" in post_response.text:
+                logger.info("✅ Student switched successfully (confirmed by page content)")
+                return True
+            else:
+                logger.warning("⚠️ 200 OK but no confirmation in page content (switch may have failed silently)")
+                return False
         else:
             logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
             return False
