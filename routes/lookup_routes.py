@@ -5,7 +5,7 @@ import os
 
 lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
-@lookup_bp.route("/students", methods=["POST"])
+@lookup_bp.route("/students", methods=["GET", "POST"])
 def get_student_list():
     payload = request.get_json()
     username = payload.get("username")
