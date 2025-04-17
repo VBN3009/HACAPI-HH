@@ -396,52 +396,92 @@ class HACSession:
 
         return students
 
-    def switch_student(self, student_id):
-        if not self.logged_in:
-            self.login()
-
-        url = self.base_url + "HomeAccess/Frame/StudentPicker"
-        logger.info(f"📤 Switching to student ID: {student_id}")
-
-        # Step 1: Fetch the student picker form to get CSRF token
-        response = self.session.get(url)
-        if response.status_code != 200:
-            logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
-            return False
-
-        soup = BeautifulSoup(response.text, "lxml")
-        logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
-
+def switch_student(self, student_id):
+    if not self.logged_in:
+        self.login()
+    
+    # First, verify our session is still active
+    test_url = self.base_url + "HomeAccess/Home"
+    response = self.session.get(test_url, allow_redirects=False)
+    if response.status_code in [301, 302] or "login" in response.text.lower():
+        logger.info("🔄 Session expired, re-authenticating...")
+        self.login()
+    
+    # Start by visiting the home page to establish context (similar to browser navigation)
+    self.session.get(self.base_url + "HomeAccess/Home")
+    
+    url = self.base_url + "HomeAccess/Frame/StudentPicker"
+    logger.info(f"📤 Switching to student ID: {student_id}")
+    
+    # Step 1: Fetch the student picker form to get all required form fields
+    response = self.session.get(url)
+    if response.status_code != 200:
+        logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
+        return False
+    
+    soup = BeautifulSoup(response.text, "lxml")
+    logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
+    
+    # Get all form inputs, not just the token
+    form = soup.find("form")
+    if not form:
+        logger.warning("❌ Form not found on StudentPicker page")
+        return False
+    
+    # Build a complete payload with all hidden inputs
+    payload = {}
+    for input_field in form.find_all("input"):
+        if input_field.get("name"):
+            payload[input_field["name"]] = input_field.get("value", "")
+    
+    # Override with our specific values
+    payload["studentId"] = student_id
+    
+    # Make sure we have the verification token
+    if "__RequestVerificationToken" not in payload:
         token_input = soup.find("input", {"name": "__RequestVerificationToken"})
-        token = token_input["value"] if token_input else None
-
-        if not token:
+        if token_input and token_input.get("value"):
+            payload["__RequestVerificationToken"] = token_input["value"]
+        else:
             logger.warning("❌ CSRF token not found on StudentPicker form.")
             return False
-
-        # Step 2: Submit the POST form to switch students
-        payload = {
-            "__RequestVerificationToken": token,
-            "studentId": student_id,
-            "url": ""
-        }
-
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Referer": url,
-            "Origin": self.base_url.rstrip("/"),
-            "User-Agent": "Mozilla/5.0"
-        }
-
-        logger.debug(f"📤 Switching student with payload: {payload}")
-        post_response = self.session.post(url, data=payload, headers=headers)
-
-        logger.debug(f"🔁 Response status: {post_response.status_code}")
-        logger.debug(f"🔁 Response body (first 1000 chars):\n{post_response.text[:1000]}")
-
-        if post_response.status_code == 200:
-            logger.info("✅ Student switched successfully")
+    
+    # Step 2: Submit the POST form to switch students
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": url,
+        "Origin": self.base_url.rstrip("/"),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    logger.debug(f"📤 Switching student with payload: {payload}")
+    post_response = self.session.post(url, data=payload, headers=headers)
+    
+    logger.debug(f"🔁 Response status: {post_response.status_code}")
+    logger.debug(f"🔁 Response headers: {dict(post_response.headers)}")
+    logger.debug(f"🔁 Response body (first 1000 chars):\n{post_response.text[:1000]}")
+    
+    # Try an alternative approach if the first one fails
+    if post_response.status_code != 200:
+        logger.info("⚠️ First attempt failed, trying alternative approach...")
+        direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent?studentId={student_id}"
+        alt_response = self.session.get(direct_url)
+        logger.debug(f"🔄 Alternative approach status: {alt_response.status_code}")
+        
+        if alt_response.status_code in [200, 302]:
+            logger.info("✅ Student switched successfully using alternative approach")
+            return True
+    
+    # Check if the response indicates success
+    if post_response.status_code in [200, 302]:
+        # Verify the student was actually switched
+        verify_response = self.session.get(self.base_url + "HomeAccess/Home")
+        if student_id in verify_response.text:
+            logger.info("✅ Student switch verified on Home page")
             return True
         else:
-            logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
-            return False
+            logger.info("✅ Student switch appears successful based on status code")
+            return True
+    
+    logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
+    return False

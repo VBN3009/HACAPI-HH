@@ -51,19 +51,37 @@ def switch_student():
         student_id = payload.get("student_id")
 
         print("🔑 Username:", username)
-        print("🔐 Password:", password)
         print("🌐 Base URL:", base_url)
         print("🎓 Student ID:", student_id)
+
+        # Normalize the base URL
+        if base_url and not base_url.endswith('/'):
+            base_url += '/'
 
         # Safety check
         if not base_url.startswith("https://accesscenter.roundrockisd.org"):
             return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
         session = HACSession(username, password, base_url)
+        
+        # First verify we can get students list
+        students = session.get_students()
+        if not students:
+            return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
+            
+        # Verify student_id is in the list
+        student_ids = [s["id"] for s in students]
+        if student_id not in student_ids:
+            return jsonify({"success": False, "error": f"Student ID {student_id} not found in available students: {student_ids}"}), 400
+
+        # Now try to switch
         success = session.switch_student(student_id)
 
         return jsonify({"success": success})
 
     except Exception as e:
+        import traceback
+        traceback_str = traceback.format_exc()
+        print("❌ Exception:", str(e))
+        print("❌ Traceback:", traceback_str)
         return jsonify({"error": str(e)}), 500
-
