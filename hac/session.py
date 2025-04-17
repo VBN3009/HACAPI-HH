@@ -485,3 +485,19 @@ class HACSession:
         
         logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
         return False
+    
+    def get_current_student(self):
+        if not self.logged_in:
+            self.login()
+
+        url = self.base_url + "HomeAccess/Home"
+        response = self.session.get(url)
+        if response.status_code != 200:
+            logger.warning("❌ Failed to load Home page for current student.")
+            return None
+
+        soup = BeautifulSoup(response.text, "lxml")
+        name_span = soup.find("span", class_="sg-banner-text sg-banner-text-color sg-add-change-student")
+        if name_span:
+            return name_span.text.strip()
+        return None
