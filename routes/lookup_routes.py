@@ -7,12 +7,22 @@ lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
 @lookup_bp.route("/students", methods=["POST"])
 def get_student_list():
-    payload = request.get_json()
-    username = payload.get("username")
-    password = payload.get("password")
-    base_url = os.getenv("HAC_URL")  # or default to "https://accesscenter.roundrockisd.org/"
+    try:
+        payload = request.get_json()
+        username = payload.get("username")
+        password = payload.get("password")
 
-    session = HACSession(username, password, base_url)
-    students = session.get_students()
+        if not username or not password:
+            return jsonify({"error": "Username and password required"}), 400
 
-    return jsonify(students)
+        base_url = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org/")
+        session = HACSession(username, password, base_url)
+
+        students = session.get_students()
+        if not students:
+            return jsonify({"error": "No students found or login failed"}), 404
+
+        return jsonify({"students": students}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
