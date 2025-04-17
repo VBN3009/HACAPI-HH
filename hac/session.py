@@ -402,7 +402,7 @@ class HACSession:
 
         url = self.base_url + "HomeAccess/Frame/StudentPicker"
 
-        # Fetch the form page
+        # Step 1: Load the student picker form to get the CSRF token
         response = self.session.get(url)
         if response.status_code != 200:
             logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
@@ -416,16 +416,25 @@ class HACSession:
             logger.warning("❌ CSRF token not found on StudentPicker form.")
             return False
 
+        # Step 2: Prepare the payload
         payload = {
             "__RequestVerificationToken": token,
             "studentId": student_id,
-            "url": ""  # Empty string as seen in the form
+            "url": ""
         }
 
+        # Step 3: Prepare headers to mimic a browser
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": self.base_url.rstrip('/'),
+            "Referer": self.base_url + "HomeAccess/Frame/StudentPicker",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            )
         }
 
+        # Step 4: POST to switch student
         logger.debug(f"📤 Switching student with payload: {payload}")
         post_response = self.session.post(url, data=payload, headers=headers)
 
