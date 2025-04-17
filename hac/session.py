@@ -396,3 +396,41 @@ class HACSession:
 
         return students
 
+    def switch_student(self, student_id):
+        if not self.logged_in:
+            self.login()
+
+        url = self.base_url + "HomeAccess/Frame/StudentPicker"
+        logger.info(f"🔄 Switching to student ID: {student_id}")
+        
+        # Load the StudentPicker page to extract CSRF token
+        response = self.session.get(url)
+        if response.status_code != 200:
+            logger.warning("❌ Failed to load StudentPicker for switching")
+            return False
+
+        soup = BeautifulSoup(response.text, "lxml")
+        token_input = soup.find("input", {"name": "__RequestVerificationToken"})
+
+        if not token_input:
+            logger.warning("❌ CSRF token not found when switching student")
+            return False
+
+        token = token_input["value"]
+        logger.info(f"✅ CSRF token extracted: {token[:10]}...")
+
+        # Prepare the form payload
+        payload = {
+            "__RequestVerificationToken": token,
+            "studentId": student_id,
+            "url": ""
+        }
+
+        # Perform the POST to switch
+        post_response = self.session.post(url, data=payload)
+        if post_response.status_code == 200:
+            logger.info("✅ Student switched successfully")
+            return True
+        else:
+            logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
+            return False
