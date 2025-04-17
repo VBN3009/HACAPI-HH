@@ -7,46 +7,54 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 
 @logs_bp.route("/checkout", methods=["POST"])
 def log_checkout():
+    payload = request.get_json()
+    print("📥 Checkout Payload:", payload)
+
+    record = {
+        "student_name":  payload["student_name"],
+        "class_name":    payload["class_name"],
+        "period":        int(payload["period"]),
+        "room":          payload["room"],
+        "teacher":       payload["teacher"],
+        "checkout_time": payload.get("checkout_time")
+    }
+
     try:
-        payload = request.get_json()
-        print("📥 Checkout Payload:", payload)
-
-        record = {
-            "student_name":  payload["student_name"],
-            "class_name":    payload["class_name"],
-            "period":        int(payload["period"]),
-            "room":          payload["room"],
-            "teacher":       payload["teacher"],
-            "checkout_time": payload["checkout_time"]
-        }
-
-        print("📤 Record to insert:", record)
-
         res = supabase.table("checkouts").insert(record).execute()
-
-        if res.error:
-            print("❌ Supabase error:", res.error.message)
-            return jsonify({"error": res.error.message}), 500
-
-        print("✅ Record inserted:", res.data[0])
-        return jsonify(res.data[0]), 201
-
+        if res.data:
+            print("✅ Supabase insert success:", res.data[0])
+            return jsonify(res.data[0]), 201
+        else:
+            print("❌ Supabase insert returned no data")
+            return jsonify({"error": "Insert failed"}), 500
     except Exception as e:
-        print("❌ Exception in /checkout:", str(e))
+        print("❌ Exception during insert:", str(e))
         return jsonify({"error": str(e)}), 500
+
 
 
 
 @logs_bp.route("/checkin", methods=["POST"])
 def log_checkin():
     payload = request.get_json()
-    res = supabase.table("checkouts") \
-        .update({
-            "checkin_time": payload["checkin_time"],
-            "duration_s": int(payload["duration_sec"])
-        }) \
-        .eq("id", payload["checkout_id"]) \
-        .execute()
-    if res.error:
-        return jsonify({"error": res.error.message}), 500
-    return jsonify(res.data), 200
+    print("📥 Checkin Payload:", payload)
+
+    try:
+        res = supabase.table("checkouts") \
+            .update({
+                "checkin_time": payload["checkin_time"],
+                "duration_sec": payload["duration_sec"]
+            }) \
+            .eq("id", payload["checkout_id"]) \
+            .execute()
+
+        if res.data:
+            print("✅ Supabase update success:", res.data)
+            return jsonify(res.data), 200
+        else:
+            print("❌ Supabase update returned no data")
+            return jsonify({"error": "Update failed"}), 500
+    except Exception as e:
+        print("❌ Exception during update:", str(e))
+        return jsonify({"error": str(e)}), 500
+
