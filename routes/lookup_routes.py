@@ -15,7 +15,7 @@ def get_student_list():
         if not username or not password:
             return jsonify({"error": "Username and password required"}), 400
 
-        base_url = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org/")
+        base_url = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org")
         session = HACSession(username, password, base_url)
 
         students = session.get_students()
