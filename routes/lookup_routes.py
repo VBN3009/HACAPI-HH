@@ -43,21 +43,26 @@ def get_student_list():
 def switch_student():
     try:
         payload = request.get_json(force=True)
+        print("🔍 Raw payload received:", payload)
+
         username = payload.get("username")
         password = payload.get("password")
+        base_url = payload.get("base_url")
         student_id = payload.get("student_id")
 
-        if not username or not password or not student_id:
-            return jsonify({"error": "Username, password, and student ID required"}), 400
+        print("🔑 Username:", username)
+        print("🔐 Password:", password)
+        print("🌐 Base URL:", base_url)
+        print("🎓 Student ID:", student_id)
 
-        base_url = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org")
+        # Safety check
+        if not base_url.startswith("https://accesscenter.roundrockisd.org"):
+            return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
+
         session = HACSession(username, password, base_url)
+        success = session.switch_student(student_id)
 
-        switched = session.switch_student(student_id)
-        if not switched:
-            return jsonify({"error": "Failed to switch student"}), 500
-
-        return jsonify({"success": True, "message": f"Switched to student ID {student_id}"}), 200
+        return jsonify({"success": success})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
