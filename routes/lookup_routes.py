@@ -85,3 +85,22 @@ def switch_student():
         print("❌ Exception:", str(e))
         print("❌ Traceback:", traceback_str)
         return jsonify({"error": str(e)}), 500
+
+@lookup_bp.route("/current", methods=["POST"])
+def get_current_student():
+    try:
+        payload = request.get_json(force=True)
+        username = payload.get("username")
+        password = payload.get("password")
+        base_url = os.getenv("HAC_URL")
+
+        session = HACSession(username, password, base_url)
+        student_name = session.get_current_student()
+
+        if not student_name:
+            return jsonify({"error": "Could not determine current student"}), 404
+
+        return jsonify({"student": student_name}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
