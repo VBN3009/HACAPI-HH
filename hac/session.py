@@ -160,17 +160,15 @@ class HACSession:
             return None
 
         soup = BeautifulSoup(response.text, 'lxml')
-        container = soup.find('div', class_='sg-banner-menu-container')
-        if not container:
-            logger.warning("Name container not found.")
-            return None
 
-        name = container.find('span')
-        if name:
-            logger.info(f"Student name found: {name.text.strip()}")
-            return name.text.strip()
+        # 🔍 Look for any <span> with title "Change Student"
+        name_span = soup.find('span', attrs={"title": "Change Student"})
+        if name_span:
+            student_name = name_span.text.strip()
+            logger.info(f"✅ Student name extracted: {student_name}")
+            return student_name
 
-        logger.warning("Name span not found.")
+        logger.warning("❌ Student name span with title 'Change Student' not found.")
         return None
 
     def fetch_class_assignments(self, filter_class=None):
