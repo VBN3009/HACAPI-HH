@@ -36,15 +36,4 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=False, port=5000)
-    username = os.getenv("HAC_USERNAME")
-    password = os.getenv("HAC_PASSWORD")
     base_url = os.getenv("HAC_URL")
-    session = HACSession(username, password, base_url)
-    report = session.get_report()
-
-    if report:
-        print("Headers:", report["headers"])
-        for row in report["data"]:
-            print(row)
-    else:
-        print("No report data found.")
