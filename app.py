@@ -36,4 +36,3 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=False, port=5000)
-    base_url = os.getenv("HAC_URL")
