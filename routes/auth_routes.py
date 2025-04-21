@@ -4,12 +4,17 @@ import os
 
 auth_bp = Blueprint("auth", __name__)
 
-@auth_bp.route("/api/getName", methods=["POST"])
+@auth_bp.route("/api/getName", methods=["GET", "POST"])
 def get_name():
-    data = request.get_json()
-    user = data.get('user')
-    password = data.get('pass')
-    link = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org/")  # use default or env
+    if request.method == "POST":
+        data = request.get_json()
+        user = data.get('user')
+        password = data.get('pass')
+    else:  # GET
+        user = request.args.get('user')
+        password = request.args.get('pass')
+
+    link = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org/")
 
     if not user or not password:
         return jsonify({"error": "Missing username or password"}), 400
