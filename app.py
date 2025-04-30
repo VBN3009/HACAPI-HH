@@ -5,23 +5,33 @@ from dotenv import load_dotenv
 from hac.session import HACSession
 import os
 from supabase import create_client
+from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-
-
+#Load environment variables from .env
 load_dotenv()
 
+#Supabase init
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+#Flask app instance
+app = Flask(__name__)
+
+#JWT config
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600  # 1 hour token expiry
+jwt = JWTManager(app)
+
+# Rate limiting (prevents abuse)
+limiter = Limiter(app, key_func=get_remote_address)
+
+# CORS: Restrict this to your Chrome Extension ID later
+CORS(app, origins=["*"])
 
 def create_app():
-    app = Flask(__name__)
-    
-    # Enable CORS for all domains (you can restrict this later)
-    CORS(app)
-
-    # Register all route blueprints
     register_routes(app)
 
     @app.route("/")
@@ -33,6 +43,7 @@ def create_app():
 
     return app
 
+# Entry point
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=False, port=5000)
