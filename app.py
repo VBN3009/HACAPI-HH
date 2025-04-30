@@ -26,7 +26,7 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600  # 1 hour token expiry
 jwt = JWTManager(app)
 
 # Rate limiting (prevents abuse)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, storage_uri=os.getenv("REDIS_URL"))
 
 # CORS: Restrict this to your Chrome Extension ID later
 CORS(app, origins=["*"])
