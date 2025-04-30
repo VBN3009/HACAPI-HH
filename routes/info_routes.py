@@ -4,7 +4,7 @@ from hac.session import HACSession
 
 info_bp = Blueprint("info", __name__)
 
-@info_bp.route("/api/getInfo", methods=["GET"])
+@info_bp.route("/api/getInfo", methods=["POST"])
 @jwt_required()
 def get_info():
     creds = get_jwt_identity()
