@@ -8,7 +8,7 @@ from .transcript_routes  import transcript_bp
 from .report_routes      import report_bp
 from .lookup_routes      import lookup_bp
 from .logs               import logs_bp  
-from login_route import login_bp
+from .login_route import login_bp
 
 def register_routes(app):
     app.register_blueprint(info_bp)
