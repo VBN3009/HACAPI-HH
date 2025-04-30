@@ -3,12 +3,12 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
 from hac.session import HACSession
-import app  # Import the app module
+from extensions import limiter
 
 login_bp = Blueprint("login", __name__)
 
 @login_bp.route("/api/login", methods=["POST"])
-@app.limiter.limit("5 per minute")  # Use app.limiter instead
+@limiter.limit("5 per minute")  # Use limiter directly from extensions
 def login():
     data = request.get_json()
     username = data.get("username")
