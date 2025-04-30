@@ -25,6 +25,8 @@ class HACSession:
 
     def login(self):
         auth_url = f"{self.base_url}HomeAccess/Account/LogOn"
+        
+        # Step 1: Load login page
         response = safe_get(self.session, auth_url)
         if not response:
             logger.error("Failed to load login page.")
@@ -38,6 +40,7 @@ class HACSession:
             logger.error("Login token not found.")
             raise RuntimeError("Login token not found.")
 
+        # Step 2: Prepare and submit login form
         payload = {
             '__RequestVerificationToken': token_input['value'],
             'SCKTY00328510CustomEnabled': True,
@@ -51,16 +54,20 @@ class HACSession:
         }
 
         login_response = safe_post(self.session, auth_url, data=payload)
-        if not login_response:
-            logger.error("Login request failed.")
-            raise RuntimeError("Could not send login request.")
+        
+        if not login_response or login_response.status_code != 200:
+            logger.error("Login POST failed or returned non-200 status.")
+            raise PermissionError("Login failed — request error.")
 
-        logger.info(f"Login response: {login_response.status_code}")
+        # Step 3: Verify login success by checking redirection
+        if "LogOn" in login_response.url or "login" in login_response.text.lower():
+            logger.warning("Login attempt remained on login page — bad credentials.")
+            raise PermissionError("Login failed — credentials rejected.")
 
-        if "Invalid" in login_response.text or login_response.status_code != 200:
-            raise PermissionError("Login failed. Check credentials.")
-
+        # Step 4: Login succeeded
+        logger.info("Login successful.")
         self.logged_in = True
+
         
 
     def get_info(self):
