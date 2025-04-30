@@ -1,17 +1,14 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from hac.session import HACSession
-import os
 
 info_bp = Blueprint("info", __name__)
 
-@info_bp.route("/api/getInfo", methods=["POST"])
+@info_bp.route("/api/getInfo", methods=["GET"])
+@jwt_required()
 def get_info():
-    data = request.get_json()
-    user = data.get('user')
-    password = data.get('pass')
-    link = os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org/")
-
-    session = HACSession(user, password, link)
+    creds = get_jwt_identity()
+    session = HACSession(creds["username"], creds["password"], creds["base_url"])
+    session.login()
     data = session.get_info()
     return jsonify(data)
-
