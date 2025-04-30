@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
 @lookup_bp.route("/students", methods=["POST"])
-@jwt_required()
+@jwt_required() 
 def get_student_list():
     try:
         identity = get_jwt_identity()
