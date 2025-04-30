@@ -53,6 +53,7 @@ def switch_student():
             return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
         session = HACSession(username, password, base_url)
+        session.login()
         students = session.get_students()
 
         if not students:
