@@ -26,13 +26,15 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600  # 1 hour token expiry
 jwt = JWTManager(app)
 
 # Rate limiting (prevents abuse)
-limiter = Limiter(app, key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address)
 
 # CORS: Restrict this to your Chrome Extension ID later
 CORS(app, origins=["*"])
 
 def create_app():
+    CORS(app)
     register_routes(app)
+    limiter.init_app(app) 
 
     @app.route("/")
     def home():
