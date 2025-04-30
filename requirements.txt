@@ -9,3 +9,4 @@ gunicorn
 supabase
 flask-jwt-extended
 flask-limiter
+redis>=3.0
