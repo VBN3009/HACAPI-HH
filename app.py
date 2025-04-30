@@ -2,12 +2,10 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from routes import register_routes
 from dotenv import load_dotenv
-from hac.session import HACSession
 import os
 from supabase import create_client
 from flask_jwt_extended import JWTManager
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from extensions import limiter
 
 #Load environment variables from .env
 load_dotenv()
@@ -17,22 +15,17 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-#Flask app instance
+# Flask app instance
 app = Flask(__name__)
 
-#JWT config
+# JWT config
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600  # 1 hour token expiry
 jwt = JWTManager(app)
 
-# Rate limiting with Redis
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    storage_uri=os.getenv("REDIS_URL"),
-    storage_options={"socket_connect_timeout": 30},
-    strategy="fixed-window", # or "moving-window"
-)
+# Configure limiter with Redis if URL is set
+if os.getenv("REDIS_URL"):
+    limiter.storage_uri = os.getenv("REDIS_URL")
 
 # CORS: Restrict this to your Chrome Extension ID later
 CORS(app, origins=["*"])

@@ -2,15 +2,13 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from hac.session import HACSession
-from app import limiter  # Import the shared limiter instance
+from extensions import limiter
 
 login_bp = Blueprint("login", __name__)
 
 @login_bp.route("/api/login", methods=["POST"])
-@limiter.limit("5 per minute")  # Apply rate limiting to the route
+@limiter.limit("5 per minute")
 def login():
     data = request.get_json()
     username = data.get("username")
