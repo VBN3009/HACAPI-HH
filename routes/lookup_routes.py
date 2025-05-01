@@ -5,7 +5,6 @@ from hac.session import HACSession
 import os
 import logging
 import traceback
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -34,90 +33,59 @@ def get_student_list():
         return jsonify({"error": str(e)}), 500
 
 
-def switch_student(self, student_id):
-    if not self.logged_in:
-        logger.info("🔒 Not logged in — attempting login")
-        self.login()
+@lookup_bp.route("/switch", methods=["POST"])
+@jwt_required()
+def switch_student():
+    try:
+        payload = request.get_json(force=True)
+        student_id = payload.get("student_id")
+        logger.info(f"🧾 Payload received: {payload}")
 
-    # Verify session is still valid
-    test_url = self.base_url + "HomeAccess/Home"
-    response = self.session.get(test_url, allow_redirects=False)
-    if response.status_code in [301, 302] or "login" in response.text.lower():
-        logger.info("🔄 Session expired, re-authenticating...")
-        self.login()
+        identity = get_jwt_identity()
+        claims = get_jwt()
+        username = identity
+        password = claims.get("password")
+        base_url = claims.get("base_url") or os.getenv("HAC_URL")
 
-    # Visit home to establish session context
-    self.session.get(self.base_url + "HomeAccess/Home")
+        logger.info(f"🔑 Username: {username}, base_url: {base_url}, switching to student_id: {student_id}")
 
-    url = self.base_url + "HomeAccess/Frame/StudentPicker"
-    logger.info(f"📤 Switching to student ID: {student_id}")
+        if not base_url.endswith("/"):
+            base_url += "/"
 
-    # Step 1: Load the student picker form
-    response = self.session.get(url)
-    if response.status_code != 200:
-        logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
-        return False
+        if not base_url.startswith("https://accesscenter.roundrockisd.org"):
+            logger.warning(f"❌ Invalid base URL: {base_url}")
+            return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
-    soup = BeautifulSoup(response.text, "lxml")
-    logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
+        session = HACSession(username, password, base_url)
+        session.login()
 
-    form = soup.find("form")
-    if not form:
-        logger.warning("❌ StudentPicker form missing — page might be incomplete or blocked.")
-        return False
+        students = session.get_students()
+        logger.info(f"📚 Students returned: {students}")
 
-    payload = {}
-    for input_field in form.find_all("input"):
-        if input_field.get("name"):
-            payload[input_field["name"]] = input_field.get("value", "")
+        if not students:
+            logger.warning("❌ No students returned from get_students()")
+            return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
 
-    # Override with our specific student ID
-    payload["studentId"] = student_id
+        student_ids = [s["id"] for s in students]
+        logger.info(f"🎯 Available student IDs: {student_ids}")
 
-    # Ensure CSRF token exists
-    if "__RequestVerificationToken" not in payload:
-        token_input = soup.find("input", {"name": "__RequestVerificationToken"})
-        if token_input and token_input.get("value"):
-            payload["__RequestVerificationToken"] = token_input["value"]
-        else:
-            logger.warning(f"❌ __RequestVerificationToken not found. Payload keys: {list(payload.keys())}")
-            return False
+        if student_id not in student_ids:
+            logger.warning(f"❌ Student ID {student_id} not in available list")
+            return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
 
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Referer": url,
-        "Origin": self.base_url.rstrip("/"),
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
+        success = session.switch_student(student_id)
 
-    logger.debug(f"📤 POST payload for switch: {payload}")
-    post_response = self.session.post(url, data=payload, headers=headers)
-    logger.debug(f"🔁 POST response status: {post_response.status_code}")
-    logger.debug(f"🔁 POST response preview:\n{post_response.text[:1000]}")
+        if not success:
+            logger.warning("❌ session.switch_student() returned False")
+            return jsonify({"success": False, "error": "Switching failed internally"}), 500
 
-    # Attempt fallback if POST failed
-    if post_response.status_code != 200:
-        logger.info("⚠️ First attempt failed, trying fallback method…")
-        direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent?studentId={student_id}"
-        alt_response = self.session.get(direct_url)
-        logger.debug(f"🔄 Fallback GET status: {alt_response.status_code}")
-        if alt_response.status_code in [200, 302]:
-            logger.info("✅ Fallback method succeeded.")
-            return True
+        logger.info("✅ Student switch successful")
+        return jsonify({"success": True})
 
-    # Verify switch by checking home page
-    if post_response.status_code in [200, 302]:
-        verify_response = self.session.get(self.base_url + "HomeAccess/Home")
-        if student_id in verify_response.text:
-            logger.info("✅ Switch verified — student ID found in homepage.")
-            return True
-        else:
-            logger.warning("❌ Switch likely failed — student ID not found in homepage.")
-            return False
-
-    logger.warning(f"❌ Student switch failed — unhandled response: {post_response.status_code}")
-    return False
-
+    except Exception as e:
+        import traceback
+        logger.error("❌ Exception in switch_student:\n%s", traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 
 @lookup_bp.route("/current", methods=["POST"])
