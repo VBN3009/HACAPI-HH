@@ -10,4 +10,9 @@ supabase
 flask-jwt-extended
 flask-limiter
 redis>=3.0
-traceback
+flask-debugtoolbar
+better-exceptions
+loguru
+requests-toolbelt
+html5lib
+httpx
