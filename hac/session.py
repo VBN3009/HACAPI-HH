@@ -419,50 +419,91 @@ class HACSession:
                 if not self.login():
                     return False
 
-            # Visit home page first to establish session
-            home_response = safe_get(self.session, self.base_url + "HomeAccess/Home")
-            if not home_response or home_response.status_code != 200:
-                logger.warning("Failed to establish session context")
-                if not self.login():  # Try re-login
-                    return False
-
-            url = self.base_url + "HomeAccess/Frame/StudentPicker"
-            response = safe_get(self.session, url)
-            if not response or response.status_code != 200:
-                logger.warning(f"Failed to load StudentPicker page: {response.status_code if response else 'No response'}")
-                return False
-
-            soup = BeautifulSoup(response.text, "lxml")
-            form = soup.find("form")
-            if not form:
-                logger.warning("StudentPicker form not found")
-                return False
-
-            # Build form data
-            payload = {
-                "studentId": student_id,
-                "__RequestVerificationToken": soup.find("input", {"name": "__RequestVerificationToken"})["value"]
-            }
-
-            # Add auth token to headers if available
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Referer": url
-            }
-            if self.auth_token:
-                headers["Cookie"] = f"AuthToken={self.auth_token}"
-
-            switch_response = safe_post(self.session, url, data=payload, headers=headers)
+            # Try direct switch URL first
+            direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent/{student_id}"
+            switch_response = safe_get(self.session, direct_url)
             
             if switch_response and switch_response.status_code in [200, 302]:
-                logger.info("✅ Student switch successful")
-                return True
+                logger.info("✅ Direct switch successful")
+                # Verify switch worked
+                verify = self.verify_student_switch(student_id)
+                if verify:
+                    return True
+
+            # If direct switch failed, try form submission
+            url = self.base_url + "HomeAccess/Frame/StudentPicker"
+            response = safe_get(self.session, url)
+            
+            if not response or response.status_code != 200:
+                logger.warning("Failed to load StudentPicker, trying alternative method")
+                # Try alternative switching method
+                alt_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent"
+                alt_payload = {"studentId": student_id}
+                alt_response = safe_post(self.session, alt_url, data=alt_payload)
                 
-            logger.warning(f"❌ Student switch failed with status {switch_response.status_code if switch_response else 'No response'}")
+                if alt_response and alt_response.status_code in [200, 302]:
+                    logger.info("✅ Alternative switch method successful")
+                    return self.verify_student_switch(student_id)
+                
+                return False
+
+            # Extract form token
+            soup = BeautifulSoup(response.text, "lxml")
+            token = soup.find("input", {"name": "__RequestVerificationToken"})
+            if not token:
+                logger.warning("Form token not found")
+                return False
+
+            # Build payload with all necessary fields
+            payload = {
+                "studentId": student_id,
+                "__RequestVerificationToken": token["value"],
+                "X-Requested-With": "XMLHttpRequest"
+            }
+
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": url,
+                "X-Requested-With": "XMLHttpRequest"
+            }
+
+            switch_response = safe_post(self.session, url, data=payload, headers=headers)
+            if switch_response and switch_response.status_code in [200, 302]:
+                logger.info("✅ Student switch successful")
+                return self.verify_student_switch(student_id)
+
+            logger.warning(f"❌ All switch attempts failed")
             return False
 
         except Exception as e:
             logger.error(f"Error during student switch: {str(e)}")
+            return False
+
+    def verify_student_switch(self, student_id):
+        """Verify the student switch was successful"""
+        try:
+            # Wait briefly for switch to complete
+            import time
+            time.sleep(1)
+            
+            # Check active student
+            active = self.get_active_student()
+            if not active:
+                return False
+                
+            students = self.get_students()
+            if not students:
+                return False
+                
+            # Find matching student
+            for student in students:
+                if student["id"] == student_id and student["name"] == active["name"]:
+                    logger.info(f"✅ Switch verified for student: {active['name']}")
+                    return True
+                    
+            return False
+        except Exception as e:
+            logger.error(f"Error verifying switch: {str(e)}")
             return False
 
     
