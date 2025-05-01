@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import logging
+import traceback
 from utils.helpers import safe_get, safe_post, check_link, safe_find_text
 
 logging.basicConfig(
@@ -419,99 +420,113 @@ class HACSession:
                 if not self.login():
                     return False
 
+            logger.info(f"🔄 Attempting to switch to student ID: {student_id}")
+            
+            # Get initial state for comparison
+            initial_students = self.get_students()
+            logger.info(f"📋 Available students: {[f'{s['name']} ({s['id']})' for s in initial_students]}")
+            
             # First try the modern API endpoint
             switch_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent"
-            payload = {"studentId": student_id}
+            payload = {
+                "studentId": student_id,
+                "X-Requested-With": "XMLHttpRequest"
+            }
             headers = {
                 "X-Requested-With": "XMLHttpRequest",
                 "Content-Type": "application/x-www-form-urlencoded"
             }
             
+            logger.info(f"📤 Sending switch request to {switch_url}")
+            logger.info(f"📦 Payload: {payload}")
+            logger.info(f"🏷 Headers: {headers}")
+            
             switch_response = safe_post(self.session, switch_url, data=payload, headers=headers, allow_redirects=True)
             
+            if switch_response:
+                logger.info(f"📥 Switch response status: {switch_response.status_code}")
+                logger.info(f"📄 Switch response headers: {dict(switch_response.headers)}")
+                logger.debug(f"📝 Switch response content: {switch_response.text[:500]}...")
+            
             if switch_response and switch_response.status_code in [200, 302]:
-                logger.info("✅ Switch request successful, verifying...")
+                logger.info("✅ Switch request accepted, verifying...")
+                
+                # Log cookies for debugging
+                logger.info(f"🍪 Current session cookies: {dict(self.session.cookies)}")
                 
                 # Force a new page load to refresh session context
                 refresh_response = safe_get(self.session, f"{self.base_url}HomeAccess/Home")
-                if not refresh_response or refresh_response.status_code != 200:
-                    logger.warning("Failed to refresh session context")
-                    return False
+                if refresh_response:
+                    logger.info(f"🔄 Refresh response status: {refresh_response.status_code}")
+                    logger.debug(f"🔍 Refresh page content: {refresh_response.text[:500]}...")
 
-                # Get current student info
-                current = self.get_active_student()
-                if not current:
-                    logger.warning("Failed to get active student after switch")
-                    return False
-
-                # Get student list to verify
-                students = self.get_students()
-                if not students:
-                    logger.warning("Failed to get student list for verification")
-                    return False
-
-                # Find target student name
-                target_student = next((s for s in students if s["id"] == student_id), None)
-                if not target_student:
-                    logger.warning(f"Target student ID {student_id} not found in student list")
-                    return False
-
-                # Verify switch was successful
-                if current.get("name") == target_student["name"]:
-                    logger.info(f"✅ Switch verified - now active: {current['name']}")
-                    return True
-                else:
-                    logger.warning(f"❌ Switch failed - still active: {current['name']}")
-                    return False
+                # Get current student info with detailed logging
+                return self.verify_student_switch(student_id, log_details=True)
 
             # If modern API fails, try legacy endpoint
             legacy_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent/{student_id}"
+            logger.info(f"📡 Trying legacy endpoint: {legacy_url}")
             legacy_response = safe_get(self.session, legacy_url, allow_redirects=True)
+            
+            if legacy_response:
+                logger.info(f"📥 Legacy response status: {legacy_response.status_code}")
+                logger.info(f"📄 Legacy response headers: {dict(legacy_response.headers)}")
             
             if legacy_response and legacy_response.status_code in [200, 302]:
                 logger.info("✅ Legacy switch successful, verifying...")
-                return self.verify_student_switch(student_id)
+                return self.verify_student_switch(student_id, log_details=True)
 
             logger.warning("❌ All switch attempts failed")
             return False
 
         except Exception as e:
             logger.error(f"Error during student switch: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
-    def verify_student_switch(self, student_id):
+    def verify_student_switch(self, student_id, log_details=False):
         """Verify the student switch was successful"""
         try:
+            if log_details:
+                logger.info(f"🔍 Verifying switch to student ID: {student_id}")
+            
             # Force refresh session context
             refresh_response = safe_get(self.session, f"{self.base_url}HomeAccess/Home")
-            if not refresh_response or refresh_response.status_code != 200:
-                return False
+            if log_details and refresh_response:
+                logger.info(f"🔄 Verification refresh status: {refresh_response.status_code}")
+                logger.info(f"🍪 Verification cookies: {dict(self.session.cookies)}")
             
             # Get current active student
             current = self.get_active_student()
-            if not current:
-                return False
-                
+            if log_details:
+                logger.info(f"👤 Current active student: {current}")
+            
             # Get all students for verification
             students = self.get_students()
-            if not students:
-                return False
-                
+            if log_details:
+                logger.info(f"📋 Available students during verification: {[f'{s['name']} ({s['id']})' for s in students]}")
+            
             # Find target student
             target_student = next((s for s in students if s["id"] == student_id), None)
+            if log_details:
+                logger.info(f"🎯 Target student: {target_student}")
+            
             if not target_student:
+                logger.warning(f"❌ Target student ID {student_id} not found in available students")
                 return False
-                
+            
             # Verify switch
-            if current.get("name") == target_student["name"]:
+            if current and current.get("name") == target_student["name"]:
                 logger.info(f"✅ Switch verified - now active: {current['name']}")
                 return True
-                
-            logger.warning(f"❌ Switch failed - still active: {current['name']}")
+            
+            if log_details:
+                logger.warning(f"❌ Switch verification failed - Expected: {target_student['name']}, Got: {current['name'] if current else 'None'}")
             return False
             
         except Exception as e:
             logger.error(f"Error verifying switch: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     def get_active_student(self):
