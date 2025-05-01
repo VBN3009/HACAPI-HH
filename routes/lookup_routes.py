@@ -55,44 +55,35 @@ def switch_student():
         if not base_url.startswith("https://accesscenter.roundrockisd.org"):
             return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
-        # Initialize session and try login with retries
-        session = None
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                session = HACSession(username, password, base_url)
-                if not session.login():
-                    logger.warning(f"Login attempt {attempt + 1} failed")
-                    continue
-                
-                # Verify active student
-                active = session.get_active_student()
-                if active and active.get("id") == student_id:
-                    return jsonify({"success": True, "message": "Already active student"})
+        session = HACSession(username, password, base_url)
+        
+        try:
+            session.login()  # This will raise PermissionError if login fails
+            
+            active = session.get_active_student()
+            if active and active.get("id") == student_id:
+                return jsonify({"success": True, "message": "Already active student"})
 
-                # Get and validate student list
-                students = session.get_students()
-                if not students:
-                    return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
+            students = session.get_students()
+            if not students:
+                return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
 
-                if student_id not in [s["id"] for s in students]:
-                    return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
+            if student_id not in [s["id"] for s in students]:
+                return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
 
-                # Attempt student switch
-                if session.switch_student(student_id):
-                    return jsonify({"success": True})
-                
-            except PermissionError as pe:
-                logger.error(f"Authentication failed on attempt {attempt + 1}: {str(pe)}")
-                if attempt == max_retries - 1:
-                    return jsonify({"success": False, "error": "Authentication failed after multiple attempts"}), 401
-                continue
-                
-            except Exception as e:
-                logger.error(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
-                return jsonify({"error": str(e), "success": False}), 500
+            # Attempt student switch
+            if session.switch_student(student_id):
+                return jsonify({"success": True})
+            else:
+                return jsonify({"success": False, "error": "Failed to switch student"}), 500
 
-        return jsonify({"success": False, "error": "Failed to complete operation after maximum retries"}), 500
+        except PermissionError as pe:
+            logger.error(f"Authentication failed: {str(pe)}")
+            return jsonify({"success": False, "error": "Authentication failed"}), 401
+            
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return jsonify({"error": str(e), "success": False}), 500
 
     except Exception as e:
         logger.error("Exception in switch_student: %s", traceback.format_exc())
