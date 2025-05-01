@@ -424,7 +424,7 @@ class HACSession:
             
             # Get initial state for comparison
             initial_students = self.get_students()
-            logger.info(f"📋 Available students: {[f'{s['name']} ({s['id']})' for s in initial_students]}")
+            logger.info("📋 Available students: " + ", ".join(f"{s.get('name')} ({s.get('id')})" for s in initial_students))
             
             # First try the modern API endpoint
             switch_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent"
@@ -504,7 +504,8 @@ class HACSession:
             # Get all students for verification
             students = self.get_students()
             if log_details:
-                logger.info(f"📋 Available students during verification: {[f'{s['name']} ({s['id']})' for s in students]}")
+                logger.info("📋 Available students during verification: " + 
+                          ", ".join(f"{s.get('name')} ({s.get('id')})" for s in students))
             
             # Find target student
             target_student = next((s for s in students if s["id"] == student_id), None)
