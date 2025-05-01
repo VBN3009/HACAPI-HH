@@ -39,6 +39,7 @@ def switch_student():
     try:
         payload = request.get_json(force=True)
         student_id = payload.get("student_id")
+        logger.info(f"🧾 Payload received: {payload}")
 
         identity = get_jwt_identity()
         claims = get_jwt()
@@ -46,28 +47,44 @@ def switch_student():
         password = claims.get("password")
         base_url = claims.get("base_url") or os.getenv("HAC_URL")
 
+        logger.info(f"🔑 Username: {username}, base_url: {base_url}, switching to student_id: {student_id}")
+
         if not base_url.endswith("/"):
             base_url += "/"
 
         if not base_url.startswith("https://accesscenter.roundrockisd.org"):
+            logger.warning(f"❌ Invalid base URL: {base_url}")
             return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
         session = HACSession(username, password, base_url)
         session.login()
+
         students = session.get_students()
+        logger.info(f"📚 Students returned: {students}")
 
         if not students:
+            logger.warning("❌ No students returned from get_students()")
             return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
 
         student_ids = [s["id"] for s in students]
+        logger.info(f"🎯 Available student IDs: {student_ids}")
+
         if student_id not in student_ids:
+            logger.warning(f"❌ Student ID {student_id} not in available list")
             return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
 
         success = session.switch_student(student_id)
-        return jsonify({"success": success})
+
+        if not success:
+            logger.warning("❌ session.switch_student() returned False")
+            return jsonify({"success": False, "error": "Switching failed internally"}), 500
+
+        logger.info("✅ Student switch successful")
+        return jsonify({"success": True})
 
     except Exception as e:
-        logger.error("Exception in switch_student: %s", traceback.format_exc())
+        import traceback
+        logger.error("❌ Exception in switch_student:\n%s", traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
