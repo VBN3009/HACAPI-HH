@@ -22,53 +22,62 @@ class HACSession:
         self.password = password
         self.base_url = base_url.rstrip('/') + '/'
         self.logged_in = False
+        self.auth_token = None
+        self.last_auth_time = None
 
     def login(self):
         auth_url = f"{self.base_url}HomeAccess/Account/LogOn"
         
-        # Step 1: Load login page
-        response = safe_get(self.session, auth_url)
-        if not response:
-            logger.error("Failed to load login page.")
-            raise RuntimeError("Could not load login page.")
+        try:
+            # Step 1: Load login page
+            response = safe_get(self.session, auth_url)
+            if not response:
+                logger.error("Failed to load login page.")
+                return False
 
-        logger.info(f"Visiting login page: {auth_url} (Status {response.status_code})")
-        soup = BeautifulSoup(response.content, 'lxml')
-        token_input = soup.find('input', {'name': '__RequestVerificationToken'})
+            logger.info(f"Visiting login page: {auth_url} (Status {response.status_code})")
+            soup = BeautifulSoup(response.content, 'lxml')
+            token_input = soup.find('input', {'name': '__RequestVerificationToken'})
 
-        if not token_input:
-            logger.error("Login token not found.")
-            raise RuntimeError("Login token not found.")
+            if not token_input:
+                logger.error("Login token not found.")
+                return False
 
-        # Step 2: Prepare and submit login form
-        payload = {
-            '__RequestVerificationToken': token_input['value'],
-            'SCKTY00328510CustomEnabled': True,
-            'SCKTY00436568CustomEnabled': True,
-            'Database': 10,
-            'VerificationOption': 'UsernamePassword',
-            'LogOnDetails.UserName': self.username,
-            'tempUN': '',
-            'tempPW': '',
-            'LogOnDetails.Password': self.password
-        }
+            # Step 2: Prepare and submit login form
+            payload = {
+                '__RequestVerificationToken': token_input['value'],
+                'SCKTY00328510CustomEnabled': True,
+                'SCKTY00436568CustomEnabled': True,
+                'Database': 10,
+                'VerificationOption': 'UsernamePassword',
+                'LogOnDetails.UserName': self.username,
+                'tempUN': '',
+                'tempPW': '',
+                'LogOnDetails.Password': self.password
+            }
 
-        login_response = safe_post(self.session, auth_url, data=payload)
-        
-        if not login_response or login_response.status_code != 200:
-            logger.error("Login POST failed or returned non-200 status.")
-            raise PermissionError("Login failed — request error.")
+            login_response = safe_post(self.session, auth_url, data=payload)
+            
+            if not login_response or login_response.status_code != 200:
+                logger.error("Login POST failed or returned non-200 status.")
+                return False
 
-        # Step 3: Verify login success by checking redirection
-        if "LogOn" in login_response.url or "login" in login_response.text.lower():
-            logger.warning("Login attempt remained on login page — bad credentials.")
-            raise PermissionError("Login failed — credentials rejected.")
+            # Store authentication token from response
+            self.auth_token = login_response.cookies.get('AuthToken')
+            
+            # Verify login success
+            if "LogOn" in login_response.url or "login" in login_response.text.lower():
+                logger.warning("Login attempt remained on login page — bad credentials.")
+                return False
 
-        # Step 4: Login succeeded
-        logger.info("Login successful.")
-        self.logged_in = True
+            # Login succeeded
+            logger.info("Login successful.")
+            self.logged_in = True
+            return True
 
-        
+        except Exception as e:
+            logger.error(f"Login failed with error: {str(e)}")
+            return False
 
     def get_info(self):
         if not self.logged_in:
@@ -404,89 +413,57 @@ class HACSession:
         return students
     
     def switch_student(self, student_id):
-        if not self.logged_in:
-            logger.info("🔒 Not logged in — attempting login")
-            self.login()
+        try:
+            if not self.logged_in:
+                logger.info("🔒 Not logged in — attempting login")
+                if not self.login():
+                    return False
 
-        # Verify session is still valid
-        test_url = self.base_url + "HomeAccess/Home"
-        response = self.session.get(test_url, allow_redirects=False)
-        if response.status_code in [301, 302] or "login" in response.text.lower():
-            logger.info("🔄 Session expired, re-authenticating...")
-            self.login()
+            # Visit home page first to establish session
+            home_response = safe_get(self.session, self.base_url + "HomeAccess/Home")
+            if not home_response or home_response.status_code != 200:
+                logger.warning("Failed to establish session context")
+                if not self.login():  # Try re-login
+                    return False
 
-        # Visit home to establish session context
-        self.session.get(self.base_url + "HomeAccess/Home")
-
-        url = self.base_url + "HomeAccess/Frame/StudentPicker"
-        logger.info(f"📤 Switching to student ID: {student_id}")
-
-        # Step 1: Load the student picker form
-        response = self.session.get(url)
-        if response.status_code != 200:
-            logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
-            return False
-
-        soup = BeautifulSoup(response.text, "lxml")
-        logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
-
-        form = soup.find("form")
-        if not form:
-            logger.warning("❌ StudentPicker form missing — page might be incomplete or blocked.")
-            return False
-
-        payload = {}
-        for input_field in form.find_all("input"):
-            if input_field.get("name"):
-                payload[input_field["name"]] = input_field.get("value", "")
-
-        # Override with our specific student ID
-        payload["studentId"] = student_id
-
-        # Ensure CSRF token exists
-        if "__RequestVerificationToken" not in payload:
-            token_input = soup.find("input", {"name": "__RequestVerificationToken"})
-            if token_input and token_input.get("value"):
-                payload["__RequestVerificationToken"] = token_input["value"]
-            else:
-                logger.warning(f"❌ __RequestVerificationToken not found. Payload keys: {list(payload.keys())}")
+            url = self.base_url + "HomeAccess/Frame/StudentPicker"
+            response = safe_get(self.session, url)
+            if not response or response.status_code != 200:
+                logger.warning(f"Failed to load StudentPicker page: {response.status_code if response else 'No response'}")
                 return False
 
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Referer": url,
-            "Origin": self.base_url.rstrip("/"),
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-
-        logger.debug(f"📤 POST payload for switch: {payload}")
-        post_response = self.session.post(url, data=payload, headers=headers)
-        logger.debug(f"🔁 POST response status: {post_response.status_code}")
-        logger.debug(f"🔁 POST response preview:\n{post_response.text[:1000]}")
-
-        # Attempt fallback if POST failed
-        if post_response.status_code != 200:
-            logger.info("⚠️ First attempt failed, trying fallback method…")
-            direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent?studentId={student_id}"
-            alt_response = self.session.get(direct_url)
-            logger.debug(f"🔄 Fallback GET status: {alt_response.status_code}")
-            if alt_response.status_code in [200, 302]:
-                logger.info("✅ Fallback method succeeded.")
-                return True
-
-        # Verify switch by checking home page
-        if post_response.status_code in [200, 302]:
-            verify_response = self.session.get(self.base_url + "HomeAccess/Home")
-            if student_id in verify_response.text:
-                logger.info("✅ Switch verified — student ID found in homepage.")
-                return True
-            else:
-                logger.warning("❌ Switch likely failed — student ID not found in homepage.")
+            soup = BeautifulSoup(response.text, "lxml")
+            form = soup.find("form")
+            if not form:
+                logger.warning("StudentPicker form not found")
                 return False
 
-        logger.warning(f"❌ Student switch failed — unhandled response: {post_response.status_code}")
-        return False
+            # Build form data
+            payload = {
+                "studentId": student_id,
+                "__RequestVerificationToken": soup.find("input", {"name": "__RequestVerificationToken"})["value"]
+            }
 
+            # Add auth token to headers if available
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": url
+            }
+            if self.auth_token:
+                headers["Cookie"] = f"AuthToken={self.auth_token}"
+
+            switch_response = safe_post(self.session, url, data=payload, headers=headers)
+            
+            if switch_response and switch_response.status_code in [200, 302]:
+                logger.info("✅ Student switch successful")
+                return True
+                
+            logger.warning(f"❌ Student switch failed with status {switch_response.status_code if switch_response else 'No response'}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error during student switch: {str(e)}")
+            return False
 
     
     def get_active_student(self):

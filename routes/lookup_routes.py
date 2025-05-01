@@ -57,33 +57,28 @@ def switch_student():
 
         session = HACSession(username, password, base_url)
         
-        try:
-            session.login()  # This will raise PermissionError if login fails
-            
-            active = session.get_active_student()
-            if active and active.get("id") == student_id:
-                return jsonify({"success": True, "message": "Already active student"})
+        # Initial login attempt
+        if not session.login():
+            return jsonify({"success": False, "error": "Initial authentication failed"}), 401
 
-            students = session.get_students()
-            if not students:
-                return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
+        # Verify active student
+        active = session.get_active_student()
+        if active and active.get("id") == student_id:
+            return jsonify({"success": True, "message": "Already active student"})
 
-            if student_id not in [s["id"] for s in students]:
-                return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
+        # Get and validate student list
+        students = session.get_students()
+        if not students:
+            return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
 
-            # Attempt student switch
-            if session.switch_student(student_id):
-                return jsonify({"success": True})
-            else:
-                return jsonify({"success": False, "error": "Failed to switch student"}), 500
+        if student_id not in [s["id"] for s in students]:
+            return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
 
-        except PermissionError as pe:
-            logger.error(f"Authentication failed: {str(pe)}")
-            return jsonify({"success": False, "error": "Authentication failed"}), 401
-            
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
-            return jsonify({"error": str(e), "success": False}), 500
+        # Attempt student switch
+        if session.switch_student(student_id):
+            return jsonify({"success": True})
+        
+        return jsonify({"success": False, "error": "Failed to switch student"}), 500
 
     except Exception as e:
         logger.error("Exception in switch_student: %s", traceback.format_exc())
