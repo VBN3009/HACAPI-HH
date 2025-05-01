@@ -419,60 +419,60 @@ class HACSession:
                 if not self.login():
                     return False
 
-            # Try direct switch URL first
-            direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent/{student_id}"
-            switch_response = safe_get(self.session, direct_url)
-            
-            if switch_response and switch_response.status_code in [200, 302]:
-                logger.info("✅ Direct switch successful")
-                # Verify switch worked
-                verify = self.verify_student_switch(student_id)
-                if verify:
-                    return True
-
-            # If direct switch failed, try form submission
-            url = self.base_url + "HomeAccess/Frame/StudentPicker"
-            response = safe_get(self.session, url)
-            
-            if not response or response.status_code != 200:
-                logger.warning("Failed to load StudentPicker, trying alternative method")
-                # Try alternative switching method
-                alt_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent"
-                alt_payload = {"studentId": student_id}
-                alt_response = safe_post(self.session, alt_url, data=alt_payload)
-                
-                if alt_response and alt_response.status_code in [200, 302]:
-                    logger.info("✅ Alternative switch method successful")
-                    return self.verify_student_switch(student_id)
-                
-                return False
-
-            # Extract form token
-            soup = BeautifulSoup(response.text, "lxml")
-            token = soup.find("input", {"name": "__RequestVerificationToken"})
-            if not token:
-                logger.warning("Form token not found")
-                return False
-
-            # Build payload with all necessary fields
-            payload = {
-                "studentId": student_id,
-                "__RequestVerificationToken": token["value"],
-                "X-Requested-With": "XMLHttpRequest"
-            }
-
+            # First try the modern API endpoint
+            switch_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent"
+            payload = {"studentId": student_id}
             headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Referer": url,
-                "X-Requested-With": "XMLHttpRequest"
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded"
             }
-
-            switch_response = safe_post(self.session, url, data=payload, headers=headers)
+            
+            switch_response = safe_post(self.session, switch_url, data=payload, headers=headers, allow_redirects=True)
+            
             if switch_response and switch_response.status_code in [200, 302]:
-                logger.info("✅ Student switch successful")
+                logger.info("✅ Switch request successful, verifying...")
+                
+                # Force a new page load to refresh session context
+                refresh_response = safe_get(self.session, f"{self.base_url}HomeAccess/Home")
+                if not refresh_response or refresh_response.status_code != 200:
+                    logger.warning("Failed to refresh session context")
+                    return False
+
+                # Get current student info
+                current = self.get_active_student()
+                if not current:
+                    logger.warning("Failed to get active student after switch")
+                    return False
+
+                # Get student list to verify
+                students = self.get_students()
+                if not students:
+                    logger.warning("Failed to get student list for verification")
+                    return False
+
+                # Find target student name
+                target_student = next((s for s in students if s["id"] == student_id), None)
+                if not target_student:
+                    logger.warning(f"Target student ID {student_id} not found in student list")
+                    return False
+
+                # Verify switch was successful
+                if current.get("name") == target_student["name"]:
+                    logger.info(f"✅ Switch verified - now active: {current['name']}")
+                    return True
+                else:
+                    logger.warning(f"❌ Switch failed - still active: {current['name']}")
+                    return False
+
+            # If modern API fails, try legacy endpoint
+            legacy_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent/{student_id}"
+            legacy_response = safe_get(self.session, legacy_url, allow_redirects=True)
+            
+            if legacy_response and legacy_response.status_code in [200, 302]:
+                logger.info("✅ Legacy switch successful, verifying...")
                 return self.verify_student_switch(student_id)
 
-            logger.warning(f"❌ All switch attempts failed")
+            logger.warning("❌ All switch attempts failed")
             return False
 
         except Exception as e:
@@ -482,31 +482,38 @@ class HACSession:
     def verify_student_switch(self, student_id):
         """Verify the student switch was successful"""
         try:
-            # Wait briefly for switch to complete
-            import time
-            time.sleep(1)
+            # Force refresh session context
+            refresh_response = safe_get(self.session, f"{self.base_url}HomeAccess/Home")
+            if not refresh_response or refresh_response.status_code != 200:
+                return False
             
-            # Check active student
-            active = self.get_active_student()
-            if not active:
+            # Get current active student
+            current = self.get_active_student()
+            if not current:
                 return False
                 
+            # Get all students for verification
             students = self.get_students()
             if not students:
                 return False
                 
-            # Find matching student
-            for student in students:
-                if student["id"] == student_id and student["name"] == active["name"]:
-                    logger.info(f"✅ Switch verified for student: {active['name']}")
-                    return True
-                    
+            # Find target student
+            target_student = next((s for s in students if s["id"] == student_id), None)
+            if not target_student:
+                return False
+                
+            # Verify switch
+            if current.get("name") == target_student["name"]:
+                logger.info(f"✅ Switch verified - now active: {current['name']}")
+                return True
+                
+            logger.warning(f"❌ Switch failed - still active: {current['name']}")
             return False
+            
         except Exception as e:
             logger.error(f"Error verifying switch: {str(e)}")
             return False
 
-    
     def get_active_student(self):
         """
         Returns the currently selected student name (and ID, if you like)
