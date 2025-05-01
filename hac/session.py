@@ -405,21 +405,23 @@ class HACSession:
     
     def switch_student(self, student_id):
         if not self.logged_in:
+            logger.info("🔒 Not logged in — attempting login")
             self.login()
 
-        # 🧪 Check if session is still valid — do NOT re-login if it fails
+        # Verify session is still valid
         test_url = self.base_url + "HomeAccess/Home"
         response = self.session.get(test_url, allow_redirects=False)
         if response.status_code in [301, 302] or "login" in response.text.lower():
-            logger.warning("⚠️ Session appears expired — aborting switch to avoid re-login lockout.")
-            return False
+            logger.info("🔄 Session expired, re-authenticating...")
+            self.login()
 
-        # Start by visiting the home page to establish context
+        # Visit home to establish session context
         self.session.get(self.base_url + "HomeAccess/Home")
 
         url = self.base_url + "HomeAccess/Frame/StudentPicker"
         logger.info(f"📤 Switching to student ID: {student_id}")
 
+        # Step 1: Load the student picker form
         response = self.session.get(url)
         if response.status_code != 200:
             logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
@@ -430,63 +432,61 @@ class HACSession:
 
         form = soup.find("form")
         if not form:
-            logger.warning("❌ Form not found on StudentPicker page")
+            logger.warning("❌ StudentPicker form missing — page might be incomplete or blocked.")
             return False
 
-        # Build payload from hidden inputs
         payload = {}
         for input_field in form.find_all("input"):
             if input_field.get("name"):
                 payload[input_field["name"]] = input_field.get("value", "")
 
-        # Override with selected studentId
+        # Override with our specific student ID
         payload["studentId"] = student_id
 
-        # Ensure we have a CSRF token
+        # Ensure CSRF token exists
         if "__RequestVerificationToken" not in payload:
             token_input = soup.find("input", {"name": "__RequestVerificationToken"})
             if token_input and token_input.get("value"):
                 payload["__RequestVerificationToken"] = token_input["value"]
             else:
-                logger.warning("❌ CSRF token not found on StudentPicker form.")
+                logger.warning(f"❌ __RequestVerificationToken not found. Payload keys: {list(payload.keys())}")
                 return False
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Referer": url,
             "Origin": self.base_url.rstrip("/"),
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
 
-        logger.debug(f"📤 Switching student with payload: {payload}")
+        logger.debug(f"📤 POST payload for switch: {payload}")
         post_response = self.session.post(url, data=payload, headers=headers)
+        logger.debug(f"🔁 POST response status: {post_response.status_code}")
+        logger.debug(f"🔁 POST response preview:\n{post_response.text[:1000]}")
 
-        logger.debug(f"🔁 Response status: {post_response.status_code}")
-        logger.debug(f"🔁 Response headers: {dict(post_response.headers)}")
-        logger.debug(f"🔁 Response body (first 1000 chars):\n{post_response.text[:1000]}")
-
+        # Attempt fallback if POST failed
         if post_response.status_code != 200:
-            logger.info("⚠️ First attempt failed, trying alternative approach...")
+            logger.info("⚠️ First attempt failed, trying fallback method…")
             direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent?studentId={student_id}"
             alt_response = self.session.get(direct_url)
-            logger.debug(f"🔄 Alternative approach status: {alt_response.status_code}")
-
+            logger.debug(f"🔄 Fallback GET status: {alt_response.status_code}")
             if alt_response.status_code in [200, 302]:
-                logger.info("✅ Student switched successfully using alternative approach")
+                logger.info("✅ Fallback method succeeded.")
                 return True
 
-        # Final check: verify student ID appears on Home page
+        # Verify switch by checking home page
         if post_response.status_code in [200, 302]:
             verify_response = self.session.get(self.base_url + "HomeAccess/Home")
             if student_id in verify_response.text:
-                logger.info("✅ Student switch verified on Home page")
+                logger.info("✅ Switch verified — student ID found in homepage.")
                 return True
             else:
-                logger.info("✅ Student switch appears successful based on status code")
-                return True
+                logger.warning("❌ Switch likely failed — student ID not found in homepage.")
+                return False
 
-        logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
+        logger.warning(f"❌ Student switch failed — unhandled response: {post_response.status_code}")
         return False
+
 
     
     def get_active_student(self):
