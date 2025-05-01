@@ -39,6 +39,9 @@ def switch_student():
     try:
         payload = request.get_json(force=True)
         student_id = payload.get("student_id")
+        
+        if not student_id:
+            return jsonify({"success": False, "error": "Student ID is required"}), 400
 
         identity = get_jwt_identity()
         claims = get_jwt()
@@ -52,31 +55,48 @@ def switch_student():
         if not base_url.startswith("https://accesscenter.roundrockisd.org"):
             return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
 
-        session = HACSession(username, password, base_url)
-        session.login()
+        # Initialize session and try login with retries
+        session = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                session = HACSession(username, password, base_url)
+                if not session.login():
+                    logger.warning(f"Login attempt {attempt + 1} failed")
+                    continue
+                
+                # Verify active student
+                active = session.get_active_student()
+                if active and active.get("id") == student_id:
+                    return jsonify({"success": True, "message": "Already active student"})
 
-        active = session.get_active_student()
-        if active and active.get("id") == student_id:
-            return jsonify({"success": True, "message": "Already active student"})
+                # Get and validate student list
+                students = session.get_students()
+                if not students:
+                    return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
 
-        students = session.get_students()
-        if not students:
-            return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
+                if student_id not in [s["id"] for s in students]:
+                    return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
 
-        student_ids = [s["id"] for s in students]
-        if student_id not in student_ids:
-            return jsonify({"success": False, "error": f"Student ID {student_id} not found"}), 400
+                # Attempt student switch
+                if session.switch_student(student_id):
+                    return jsonify({"success": True})
+                
+            except PermissionError as pe:
+                logger.error(f"Authentication failed on attempt {attempt + 1}: {str(pe)}")
+                if attempt == max_retries - 1:
+                    return jsonify({"success": False, "error": "Authentication failed after multiple attempts"}), 401
+                continue
+                
+            except Exception as e:
+                logger.error(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
+                return jsonify({"error": str(e), "success": False}), 500
 
-        success = session.switch_student(student_id)
-        if not success:
-            return jsonify({"success": False, "error": "Switching failed internally"}), 500
-
-        return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Failed to complete operation after maximum retries"}), 500
 
     except Exception as e:
         logger.error("Exception in switch_student: %s", traceback.format_exc())
         return jsonify({"error": str(e), "success": False}), 500
-
 
 
 @lookup_bp.route("/current", methods=["POST"])
