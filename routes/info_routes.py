@@ -15,3 +15,4 @@ def get_info():
     data = session.get_info()
     return jsonify(data)
 
+# Test
