@@ -15,7 +15,7 @@ class HACSession:
     
     def __init__(self, username, password, base_url):
         if not check_link(base_url):
-            raise ValueError(f"❌ Invalid HAC base URL: {base_url}")
+            raise ValueError(f"Invalid HAC base URL: {base_url}")
         
         self.session = requests.Session()
         self.username = username
@@ -165,10 +165,10 @@ class HACSession:
         name_span = soup.find('span', attrs={"title": "Change Student"})
         if name_span:
             student_name = name_span.text.strip()
-            logger.info(f"✅ Student name extracted: {student_name}")
+            logger.info(f"Student name extracted: {student_name}")
             return student_name
 
-        logger.warning("❌ Student name span with title 'Change Student' not found.")
+        logger.warning(" Student name span with title 'Change Student' not found.")
         return None
 
     def fetch_class_assignments(self, filter_class=None):
@@ -404,28 +404,28 @@ class HACSession:
         test_url = self.base_url + "HomeAccess/Home"
         response = self.session.get(test_url, allow_redirects=False)
         if response.status_code in [301, 302] or "login" in response.text.lower():
-            logger.info("🔄 Session expired, re-authenticating...")
+            logger.info(" Session expired, re-authenticating...")
             self.login()
         
         # Start by visiting the home page to establish context (similar to browser navigation)
         self.session.get(self.base_url + "HomeAccess/Home")
         
         url = self.base_url + "HomeAccess/Frame/StudentPicker"
-        logger.info(f"📤 Switching to student ID: {student_id}")
+        logger.info(f" Switching to student ID: {student_id}")
         
         # Step 1: Fetch the student picker form to get all required form fields
         response = self.session.get(url)
         if response.status_code != 200:
-            logger.warning(f"❌ Failed to load StudentPicker page: {response.status_code}")
+            logger.warning(f"Failed to load StudentPicker page: {response.status_code}")
             return False
         
         soup = BeautifulSoup(response.text, "lxml")
-        logger.debug("🧾 StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
+        logger.debug("StudentPicker Page HTML (first 1000 chars):\n" + response.text[:1000])
         
         # Get all form inputs, not just the token
         form = soup.find("form")
         if not form:
-            logger.warning("❌ Form not found on StudentPicker page")
+            logger.warning("Form not found on StudentPicker page")
             return False
         
         # Build a complete payload with all hidden inputs
@@ -443,7 +443,7 @@ class HACSession:
             if token_input and token_input.get("value"):
                 payload["__RequestVerificationToken"] = token_input["value"]
             else:
-                logger.warning("❌ CSRF token not found on StudentPicker form.")
+                logger.warning("CSRF token not found on StudentPicker form.")
                 return False
         
         # Step 2: Submit the POST form to switch students
@@ -454,22 +454,22 @@ class HACSession:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        logger.debug(f"📤 Switching student with payload: {payload}")
+        logger.debug(f"Switching student with payload: {payload}")
         post_response = self.session.post(url, data=payload, headers=headers)
         
-        logger.debug(f"🔁 Response status: {post_response.status_code}")
-        logger.debug(f"🔁 Response headers: {dict(post_response.headers)}")
-        logger.debug(f"🔁 Response body (first 1000 chars):\n{post_response.text[:1000]}")
+        logger.debug(f"Response status: {post_response.status_code}")
+        logger.debug(f"Response headers: {dict(post_response.headers)}")
+        logger.debug(f"Response body (first 1000 chars):\n{post_response.text[:1000]}")
         
         # Try an alternative approach if the first one fails
         if post_response.status_code != 200:
-            logger.info("⚠️ First attempt failed, trying alternative approach...")
+            logger.info("First attempt failed, trying alternative approach...")
             direct_url = f"{self.base_url}HomeAccess/Frame/SwitchStudent?studentId={student_id}"
             alt_response = self.session.get(direct_url)
-            logger.debug(f"🔄 Alternative approach status: {alt_response.status_code}")
+            logger.debug(f"Alternative approach status: {alt_response.status_code}")
             
             if alt_response.status_code in [200, 302]:
-                logger.info("✅ Student switched successfully using alternative approach")
+                logger.info("Student switched successfully using alternative approach")
                 return True
         
         # Check if the response indicates success
@@ -477,13 +477,13 @@ class HACSession:
             # Verify the student was actually switched
             verify_response = self.session.get(self.base_url + "HomeAccess/Home")
             if student_id in verify_response.text:
-                logger.info("✅ Student switch verified on Home page")
+                logger.info("Student switch verified on Home page")
                 return True
             else:
-                logger.info("✅ Student switch appears successful based on status code")
+                logger.info("Student switch appears successful based on status code")
                 return True
         
-        logger.warning(f"❌ Failed to switch student: {post_response.status_code}")
+        logger.warning(f"Failed to switch student: {post_response.status_code}")
         return False
     
     def get_active_student(self):
@@ -499,13 +499,13 @@ class HACSession:
         resp = self.session.get(home_url)
         logger.debug(f"🔁 [SESSION] Home page status: {resp.status_code}")
         if resp.status_code != 200:
-            logger.warning(f"❌ [SESSION] could not fetch Home page: {resp.status_code}")
+            logger.warning(f"[SESSION] could not fetch Home page: {resp.status_code}")
             return None
 
         soup = BeautifulSoup(resp.text, "lxml")
         chooser = soup.find("div", class_="sg-banner-chooser")
         if not chooser:
-            logger.warning("❌ [SESSION] banner chooser not found")
+            logger.warning("[SESSION] banner chooser not found")
             return None
 
         span = chooser.find(
@@ -513,9 +513,9 @@ class HACSession:
             class_="sg-banner-text sg-banner-text-color sg-add-change-student"
         )
         if not span:
-            logger.warning("❌ [SESSION] active‑student span not found")
+            logger.warning("[SESSION] active‑student span not found")
             return None
 
         name = span.text.strip()
-        logger.info(f"✅ [SESSION] active student: {name}")
+        logger.info(f"[SESSION] active student: {name}")
         return {"name": name}
