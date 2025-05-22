@@ -10,8 +10,25 @@ def log_checkout():
     payload = request.get_json()
     print("📥 Checkout Payload:", payload)
 
+    student_id = payload.get("student_id")
+    if not student_id:
+        return jsonify({"error": "Missing student_id"}), 400
+
+    try:
+        supabase.postgrest.rpc(
+            "set_config",
+            {
+                "key": "app.student_id",
+                "value": str(student_id),
+                "is_local": True
+            }
+        ).execute()
+    except Exception as e:
+        print(" Failed to set RLS context:", str(e))
+        return jsonify({"error": "Failed to set RLS context"}), 500
+
     record = {
-        "student_id":    payload["student_id"],
+        "student_id":    student_id,
         "student_name":  payload["student_name"],
         "class_name":    payload["class_name"],
         "period":        int(payload["period"]),
@@ -23,18 +40,15 @@ def log_checkout():
     try:
         res = supabase.table("checkouts").insert(record).execute()
         if res.data:
-            print("✅ Supabase insert success:", res.data[0])
-            return jsonify({
-                "success": True,
-                "checkout": res.data[0],
-                "student_id": res.data[0].get("student_id")
-            }), 201
+            print(" Supabase insert success:", res.data[0])
+            return jsonify(res.data[0]), 201
         else:
-            print("❌ Supabase insert returned no data")
+            print(" Supabase insert returned no data")
             return jsonify({"error": "Insert failed"}), 500
     except Exception as e:
-        print("❌ Exception during insert:", str(e))
+        print(" Exception during insert:", str(e))
         return jsonify({"error": str(e)}), 500
+
 
 
 
@@ -43,7 +57,7 @@ def log_checkout():
 @logs_bp.route("/checkin", methods=["POST"])
 def log_checkin():
     payload = request.get_json()
-    print("📥 Checkin Payload:", payload)
+    print("Checkin Payload:", payload)
 
     try:
         res = supabase.table("checkouts") \
@@ -55,12 +69,12 @@ def log_checkin():
             .execute()
 
         if res.data:
-            print("✅ Supabase update success:", res.data)
+            print("Supabase update success:", res.data)
             return jsonify(res.data), 200
         else:
-            print("❌ Supabase update returned no data")
+            print("Supabase update returned no data")
             return jsonify({"error": "Update failed"}), 500
     except Exception as e:
-        print("❌ Exception during update:", str(e))
+        print("Exception during update:", str(e))
         return jsonify({"error": str(e)}), 500
 
