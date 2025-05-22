@@ -11,6 +11,7 @@ def log_checkout():
     print("📥 Checkout Payload:", payload)
 
     record = {
+        "student_id":    payload["student_id"],
         "student_name":  payload["student_name"],
         "class_name":    payload["class_name"],
         "period":        int(payload["period"]),
@@ -23,13 +24,18 @@ def log_checkout():
         res = supabase.table("checkouts").insert(record).execute()
         if res.data:
             print("✅ Supabase insert success:", res.data[0])
-            return jsonify(res.data[0]), 201
+            return jsonify({
+                "success": True,
+                "checkout": res.data[0],
+                "student_id": res.data[0].get("student_id")
+            }), 201
         else:
             print("❌ Supabase insert returned no data")
             return jsonify({"error": "Insert failed"}), 500
     except Exception as e:
         print("❌ Exception during insert:", str(e))
         return jsonify({"error": str(e)}), 500
+
 
 
 
