@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, redirect
 from flask_cors import CORS
 from routes import register_routes
 from dotenv import load_dotenv
@@ -36,3 +36,9 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=False, port=5000)
+
+@app.before_request
+def enforce_https():
+    if not request.is_secure:
+        return redirect(request.url.replace("http://", "https://"), code=301)
+
