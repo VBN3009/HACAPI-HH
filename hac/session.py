@@ -61,6 +61,7 @@ class HACSession:
             raise PermissionError("Login failed. Check credentials.")
 
         self.logged_in = True
+        return True
         
 
     def get_info(self):
