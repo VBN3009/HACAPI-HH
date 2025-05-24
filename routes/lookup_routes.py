@@ -1,126 +1,96 @@
-# routes/lookup_routes.py
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from hac.session import HACSession
-import os
+from scramble import get_credentials
 import logging
-import traceback
 
 logger = logging.getLogger(__name__)
-
 lookup_bp = Blueprint("lookup", __name__, url_prefix="/lookup")
 
-@lookup_bp.route("/students", methods=["POST"])
+def _get_hac_session_from_jwt():
+    """Helper to get credentials and initialize/login to HAC session."""
+    session_id = get_jwt_identity()
+    creds = get_credentials(session_id)
+
+    if not creds:
+        logger.warning(f"Session expired/missing credentials for session_id: {session_id}")
+        return None, (jsonify({"error": "Session expired or credentials missing"}), 401)
+
+    username = creds.get("username")
+    password = creds.get("password")
+    base_url = creds.get("base_url")
+
+    if not all([username, password, base_url]):
+        logger.error(f"Incomplete credentials for session_id: {session_id}")
+        return None, (jsonify({"error": "Incomplete credentials found in session"}), 400)
+
+    try:
+        hac_session = HACSession(username, password, base_url)
+        if not hac_session.login():
+            logger.warning(f"HAC login failed for user: {username}")
+            return None, (jsonify({"error": "HAC login failed"}), 401)
+        return hac_session, None
+    except Exception as e:
+        logger.exception(f"Error during HAC session setup for user: {username}")
+        return None, (jsonify({"error": str(e)}), 500)
+
+
+@lookup_bp.route("/students", methods=["GET"])
+@jwt_required()
 def get_student_list():
+    hac_session, error_response = _get_hac_session_from_jwt()
+    if error_response:
+        return error_response
+
     try:
-        print("Raw content type:", request.content_type)
-        print("Raw data received:", request.data)
-
-        payload = request.get_json(force=True)
-        print("Parsed JSON payload:", payload)
-
-        username = payload.get("username")
-        password = payload.get("password")
-        base_url = payload.get("base_url") or os.getenv("HAC_URL", "https://accesscenter.roundrockisd.org")
-
-        print("Username:", username)
-        print("Password:", password)
-        print("Base URL:", base_url)
-
-        if not username or not password:
-            return jsonify({"error": "Username and password required"}), 400
-
-        session = HACSession(username, password, base_url)
-
-        students = session.get_students()
-        print("Students:", students)
-
+        students = hac_session.get_students()
         if not students:
-            return jsonify({"error": "No students found or login failed"}), 404
-
+            logger.info(f"No students found for user: {hac_session.username}")
+            return jsonify({"error": "No students found"}), 404
         return jsonify({"students": students}), 200
-
     except Exception as e:
-        print("💥 Exception occurred:", e)
+        logger.exception(f"Error in /lookup/students for user: {hac_session.username if hac_session else 'unknown'}")
         return jsonify({"error": str(e)}), 500
-    
+
+
 @lookup_bp.route("/switch", methods=["POST"])
+@jwt_required()
 def switch_student():
+    hac_session, error_response = _get_hac_session_from_jwt()
+    if error_response:
+        return error_response
+
+    data = request.get_json()
+    if not data or "student_id" not in data:
+        return jsonify({"success": False, "error": "Missing student_id in request body"}), 400
+    student_id_to_switch = data.get("student_id")
+
     try:
-        payload = request.get_json(force=True)
-        print("🔍 Raw payload received:", payload)
-
-        username = payload.get("username")
-        password = payload.get("password")
-        base_url = payload.get("base_url")
-        student_id = payload.get("student_id")
-
-        print("🔑 Username:", username)
-        print("🌐 Base URL:", base_url)
-        print("🎓 Student ID:", student_id)
-
-        # Normalize the base URL
-        if base_url and not base_url.endswith('/'):
-            base_url += '/'
-
-        # Safety check
-        if not base_url.startswith("https://accesscenter.roundrockisd.org"):
-            return jsonify({"error": f"❌ Invalid HAC base URL: '{base_url}'"}), 400
-
-        session = HACSession(username, password, base_url)
-        
-        # First verify we can get students list
-        students = session.get_students()
-        if not students:
-            return jsonify({"success": False, "error": "Failed to retrieve students list"}), 400
-            
-        # Verify student_id is in the list
-        student_ids = [s["id"] for s in students]
-        if student_id not in student_ids:
-            return jsonify({"success": False, "error": f"Student ID {student_id} not found in available students: {student_ids}"}), 400
-
-        # Now try to switch
-        success = session.switch_student(student_id)
-
-        return jsonify({"success": success})
-
+        success = hac_session.switch_student(student_id_to_switch)
+        if success:
+            logger.info(f"Switched to student_id: {student_id_to_switch} for user: {hac_session.username}")
+            return jsonify({"success": True, "message": f"Switched to student {student_id_to_switch}"}), 200
+        else:
+            logger.warning(f"Failed to switch to student_id: {student_id_to_switch} for user: {hac_session.username}")
+            return jsonify({"success": False, "error": f"Failed to switch to student ID {student_id_to_switch}"}), 400
     except Exception as e:
-        import traceback
-        traceback_str = traceback.format_exc()
-        print("❌ Exception:", str(e))
-        print("❌ Traceback:", traceback_str)
+        logger.exception(f"Error in /lookup/switch for user: {hac_session.username}")
         return jsonify({"error": str(e)}), 500
 
-@lookup_bp.route("/current", methods=["POST"])
+
+@lookup_bp.route("/current", methods=["GET"])
+@jwt_required()
 def get_current_student():
+    hac_session, error_response = _get_hac_session_from_jwt()
+    if error_response:
+        return error_response
+
     try:
-        payload = request.get_json(force=True)
-        print("🔍 [current] Raw payload:", payload)
-
-        username = payload.get("username")
-        password = payload.get("password")
-        raw_base = payload.get("base_url", os.getenv("HAC_URL", ""))
-
-        print(f"🔑 [current] username={username!r}  password={'*'*len(password) if password else None}")
-        print(f"🌐 [current] raw_base_url={raw_base!r}")
-
-        base_url = raw_base.rstrip("/") + "/"
-        print(f"🛠️ [current] normalized base_url={base_url!r}")
-
-        if not base_url.startswith("https://accesscenter.roundrockisd.org/"):
-            return jsonify({"error": f"❌ Invalid HAC base URL: {base_url}"}), 400
-
-        session = HACSession(username, password, base_url)
-
-        print("📥 [current] fetching active student…")
-        active = session.get_active_student()
-        print("📥 [current] got active:", active)
-
-        if not active:
+        active_student = hac_session.get_active_student()
+        if not active_student:
+            logger.info(f"No active student found for user: {hac_session.username}")
             return jsonify({"success": False, "error": "No active student found"}), 404
-
-        return jsonify({"success": True, "active": active}), 200
-
+        return jsonify({"success": True, "active_student": active_student}), 200
     except Exception as e:
-        print("❌ [current] Exception:", e)
-        traceback.print_exc()
+        logger.exception(f"Error in /lookup/current for user: {hac_session.username}")
         return jsonify({"error": str(e)}), 500
