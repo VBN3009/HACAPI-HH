@@ -7,17 +7,18 @@ from scramble import store_credentials
 
 login_bp = Blueprint("login", __name__)
 
-@login_bp.route("/api/login", methods=["POST"])
+@login_bp.route("/api/login", methods=["POST"], strict_slashes=False)
 @limiter.limit("5 per minute")
 def login():
     data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
     base_url = data.get("base_url", "https://accesscenter.roundrockisd.org/")
 
     if not username or not password:
         return jsonify({"error": "Missing username or password"}), 400
 
+    # Attempt HAC login
     try:
         session = HACSession(username, password, base_url)
         if not session.login():
@@ -27,12 +28,16 @@ def login():
     except Exception as e:
         return jsonify({"error": f"Unexpected login failure: {str(e)}"}), 500
 
-    # Use a UUID for Supabase user_id compatibility
     session_id = str(uuid4())
-    user_id = str(uuid4())  # ✅ Unique Supabase-compatible user ID
+    user_id = str(uuid4())  # Optional: replace with actual user UUID if available
 
-    store_credentials(session_id, username, password, base_url, user_id=user_id)
+    # Store encrypted credentials securely
+    try:
+        store_credentials(session_id, username, password, base_url, user_id=user_id)
+    except Exception as e:
+        return jsonify({"error": f"Failed to store session credentials: {str(e)}"}), 500
 
+    # Create JWT (optional: set expiration in config)
     token = create_access_token(identity=session_id, additional_claims={
         "username": username,
         "base_url": base_url,
