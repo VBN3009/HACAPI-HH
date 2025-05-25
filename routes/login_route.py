@@ -21,7 +21,7 @@ def login():
         logger.warning("Login attempt with missing username or password")
         return jsonify({"error": "Missing username or password"}), 400
 
-    # Step 1: Authenticate with HAC first
+    # Step 1: Authenticate with HAC
     try:
         session = HACSession(username, password, base_url)
         if not session.login():
@@ -34,9 +34,9 @@ def login():
         logger.exception(f"Unexpected error during login for user {username}")
         return jsonify({"error": f"Unexpected login failure: {str(e)}"}), 500
 
-    # Step 2: Generate session and store credentials
+    # Step 2: Generate session ID and user ID, store encrypted credentials
     session_id = str(uuid4())
-    user_id = str(uuid4())  # Can replace with hashed ID later if needed
+    user_id = str(uuid4())  # Optional: replace with a real hash or database user ID later
 
     try:
         store_credentials(session_id, username, password, base_url, user_id=user_id)
@@ -44,7 +44,7 @@ def login():
         logger.exception(f"Failed to store credentials for user {username}")
         return jsonify({"error": f"Failed to store session credentials: {str(e)}"}), 500
 
-    # Step 3: Create and return JWT
+    # Step 3: Generate JWT with session info
     token = create_access_token(identity=session_id, additional_claims={
         "username": username,
         "base_url": base_url,
